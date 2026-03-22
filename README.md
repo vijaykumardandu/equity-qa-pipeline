@@ -152,5 +152,12 @@ GET   /reports/download           download latest report
 
 ---
 ## Screenshots
+
+<img width="2871" height="1468" alt="Screenshot 2026-03-22 161352" src="https://github.com/user-attachments/assets/9a7b9253-975b-4ac9-995a-e45e70f17ef9" />
+<img width="2879" height="1516" alt="Screenshot 2026-03-22 161405" src="https://github.com/user-attachments/assets/09f3ddea-c073-402c-8f4b-8641ae18a960" />
+<img width="2879" height="1508" alt="Screenshot 2026-03-22 161412" src="https://github.com/user-attachments/assets/99e4cb10-a0ac-46d5-9046-36640fe53e2b" />
+<img width="2879" height="1515" alt="Screenshot 2026-03-22 161443" src="https://github.com/user-attachments/assets/c5bee92f-57b9-4571-a4d7-a79ffb279f50" />
+<img width="2867" height="1455" alt="Screenshot 2026-03-22 161454" src="https://github.com/user-attachments/assets/de92ac7f-d613-4e5c-b37f-707454431ef0" />
+<img width="2852" height="1502" alt="Screenshot 2026-03-22 161527" src="https://github.com/user-attachments/assets/0b3493b0-82b6-4498-b83c-c79cfd5bc8b7" />
 <img width="2879" height="1502" alt="Screenshot 2026-03-22 161551" src="https://github.com/user-attachments/assets/1450f5ce-2d46-4c51-a904-435e8a0cbdd7" />
 
