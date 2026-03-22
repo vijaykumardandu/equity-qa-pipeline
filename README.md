@@ -1,193 +1,156 @@
 # Equity Data Quality Audit Pipeline
 
-An automated quality assurance pipeline for **public ownership shareholding data**, simulating the core QA workflows used at investment data firms such as S&P Global, MSCI, and FactSet.
+A quality assurance system for public ownership shareholding data — built to understand how investment data firms like S&P Global validate filings before they reach downstream analytics.
 
-Ownership data is sourced through financial filings (annual reports, exchange notifications, 13F filings) and must be validated before it powers downstream investment analytics. This pipeline automates that process.
-
----
-
-## Business Problem
-
-Global asset managers receive shareholding data from multiple filing sources. These sources frequently produce:
-
-- Missing ISIN codes (preventing security mapping)
-- Ownership percentages exceeding 100%
-- Duplicate filings inflating ownership counts
-- Stale or future-dated records
-- Missing beneficial owner names
-
-Manual QA processes are slow and inconsistent. This pipeline reduces audit cycle time by **60%** and cuts the defect rate from **18% → ~4%** through systematic rule enforcement.
+The idea came from reading about S&P Global's Public Ownership domain, which collects shareholding data from annual reports, 13F filings, and exchange notifications globally. Bad data at ingestion cascades into wrong ownership percentages, broken ISIN mappings, and ultimately incorrect fund analytics. This project automates the checks that would normally be done manually.
 
 ---
 
-## Architecture
+## What it does
 
-```
-CSV / JSON Filings
-       │
-       ▼
- Ingestion Layer          ← pipeline/ingestor.py
- (Python + SQLite)
-       │
-       ▼
-  QA Engine               ← pipeline/qa_engine.py
-  12 Validation Rules
-       │
-       ▼
- Defect Log Table          ← db/equity_qa.db
-       │
-       ├──► FastAPI REST API    ← api/main.py
-       │    (5 route groups)
-       │
-       ├──► Streamlit Dashboard ← dashboard/streamlit_app.py
-       │    (6 pages)
-       │
-       └──► Excel Audit Report  ← reports/audit_report_generator.py
-            (4 sheets)
-```
+Takes raw shareholding records (CSV/JSON), runs them through 12 validation rules, flags defects by severity, and surfaces everything through a REST API and monitoring dashboard.
+
+The test dataset has 1,000 records with ~18% intentional errors injected — null ISINs, ownership percentages over 100%, stale filing dates, duplicate record IDs, and so on. The pipeline caught 156 defects and identified 7 error patterns that appeared across multiple companies (not just one-off filing mistakes — actual upstream data pipeline issues).
+
+**Numbers that came out of the test run:**
+- 963 records ingested (37 filtered as duplicates)
+- 156 defects found → 16.2% defect rate
+- 77 Critical / 52 High / 27 Medium
+- 7 systematic patterns across companies
+- 21/21 unit tests passing
 
 ---
 
-## Project Structure
+## Tech stack
+
+- **Python** — data generation, QA engine, classification logic
+- **SQLite** — stores raw records, defect log, audit run history
+- **FastAPI** — 14 REST endpoints for audit triggers, defect queries, report downloads
+- **Streamlit** — 6-page monitoring dashboard
+- **openpyxl** — 4-sheet formatted Excel audit report
+- **pytest** — 21 unit tests covering all 12 validation rules
+
+---
+
+## Project structure
 
 ```
 equity-qa-pipeline/
 ├── data/
-│   ├── generate_mock_data.py      # Synthetic data generator (1,000 records, ~18% errors)
+│   ├── generate_mock_data.py      # generates 1,000 records with injected errors
 │   ├── sample_shareholding.csv
 │   └── sample_shareholding.json
 ├── db/
-│   ├── schema.sql                 # Full schema + 12 validation query templates
-│   └── equity_qa.db               # SQLite database (auto-created on first run)
+│   └── schema.sql                 # table definitions + 12 validation query templates
 ├── pipeline/
-│   ├── ingestor.py                # CSV/JSON → SQLite ingestion with deduplication
-│   ├── qa_engine.py               # 12 validation rules → defect_log
-│   └── defect_classifier.py       # Systematic pattern detection + company risk profiles
+│   ├── ingestor.py                # loads CSV/JSON into SQLite, handles deduplication
+│   ├── qa_engine.py               # runs all 12 rules, writes to defect_log table
+│   └── defect_classifier.py       # detects systematic patterns, builds risk profiles
 ├── api/
-│   ├── main.py                    # FastAPI application
-│   ├── schemas.py                 # Pydantic request/response models
+│   ├── main.py
+│   ├── schemas.py
 │   └── routes/
-│       ├── audit.py               # POST /audit/run, GET /audit/summary, /patterns
-│       ├── defects.py             # GET/PATCH /defects/*, export CSV
-│       └── reports.py             # GET /reports/generate, /download
+│       ├── audit.py               # /audit/run, /audit/summary, /audit/patterns
+│       ├── defects.py             # /defects/, /defects/{company}, export CSV
+│       └── reports.py             # /reports/generate, /reports/download
 ├── dashboard/
-│   └── streamlit_app.py           # 6-page interactive Streamlit dashboard
+│   └── streamlit_app.py           # overview, defect log, rule performance, company risk
 ├── reports/
-│   └── audit_report_generator.py  # 4-sheet Excel audit report
+│   └── audit_report_generator.py  # generates Excel report with KPIs and defect breakdown
 ├── tests/
-│   └── test_qa_engine.py          # 18 unit tests (18/18 passing)
+│   └── test_qa_engine.py
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## Quickstart
+## Running it locally
 
 ```bash
-# 1. Install dependencies
+# create and activate virtual environment
+python -m venv venv
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # Mac/Linux
+
+# install dependencies
 pip install -r requirements.txt
 
-# 2. Generate synthetic shareholding data
+# generate mock data
 python data/generate_mock_data.py
 
-# 3. Initialise DB and ingest data
-python -c "
-from pipeline.ingestor import init_db, load_from_csv
-init_db()
-load_from_csv('data/sample_shareholding.csv')
-"
+# initialize DB and ingest
+python -c "from pipeline.ingestor import init_db, load_from_csv; init_db(); load_from_csv('data/sample_shareholding.csv')"
 
-# 4. Run QA audit (12 rules)
+# run QA audit
 python pipeline/qa_engine.py
 
-# 5. Classify patterns and risk profiles
-python pipeline/defect_classifier.py
-
-# 6. Generate Excel report
+# generate Excel report
 python reports/audit_report_generator.py
 
-# 7. Start FastAPI server
+# start API (terminal 1)
 uvicorn api.main:app --reload --port 8000
 
-# 8. Launch Streamlit dashboard
+# start dashboard (terminal 2)
 streamlit run dashboard/streamlit_app.py
+```
+
+API docs at `http://localhost:8000/docs`  
+Dashboard at `http://localhost:8501`
+
+On Windows, prefix report and API commands with `$env:PYTHONPATH = "."` if you get module import errors.
+
+---
+
+## The 12 validation rules
+
+| Rule | Severity | What it catches |
+|------|----------|-----------------|
+| QR-01 | Critical | Null or missing ISIN |
+| QR-02 | Critical | Ownership % > 100 |
+| QR-03 | Critical | Negative ownership % |
+| QR-04 | High | Missing shareholder name |
+| QR-05 | High | Zero or negative shares held |
+| QR-06 | High | Filing date before year 2000 |
+| QR-07 | High | Duplicate record ID |
+| QR-08 | Medium | Ticker not in known company master |
+| QR-09 | Medium | ISIN not 12 alphanumeric chars (ISO 6166) |
+| QR-10 | Medium | Future filing date |
+| QR-11 | Medium | Company aggregate ownership > 105% |
+| QR-12 | Medium | Filing type not in approved taxonomy |
+
+The classifier also separates **systematic patterns** (same rule firing across 3+ companies — upstream pipeline issue) from **isolated incidents** (single company — one-off filing error). QR-01 fired across 14 companies in the test run, which points to a missing ISIN validation step at the source ingestion layer.
+
+---
+
+## API endpoints
+
+```
+POST  /audit/run                  trigger full QA pass
+GET   /audit/summary              defect rate + KPI snapshot
+GET   /audit/patterns             systematic error patterns
+GET   /audit/risk-profiles        companies ranked by defect burden
+GET   /defects/                   list defects (filter by severity, rule, status)
+GET   /defects/{company_ticker}   all defects for one company
+GET   /defects/export/csv         download full defect log
+PATCH /defects/{id}/resolve       mark defect resolved with notes
+PATCH /defects/{id}/waive         waive with justification
+GET   /defects/stats/by-rule      defect counts per rule
+GET   /defects/stats/by-source    defect counts per filing source
+GET   /reports/generate           generate Excel audit report
+GET   /reports/download           download latest report
 ```
 
 ---
 
-## Validation Rules
+## Background / domain context
 
-| Rule  | Severity | Description |
-|-------|----------|-------------|
-| QR-01 | 🔴 Critical | Null or missing ISIN |
-| QR-02 | 🔴 Critical | Ownership percentage > 100% |
-| QR-03 | 🔴 Critical | Negative ownership percentage |
-| QR-04 | 🟠 High    | Missing shareholder name |
-| QR-05 | 🟠 High    | Zero or negative shares held |
-| QR-06 | 🟠 High    | Stale filing date (pre-2000) |
-| QR-07 | 🟠 High    | Duplicate record ID |
-| QR-08 | 🟡 Medium  | Invalid company ticker |
-| QR-09 | 🟡 Medium  | ISIN format violation (ISO 6166) |
-| QR-10 | 🟡 Medium  | Future filing date |
-| QR-11 | 🟡 Medium  | Company aggregate ownership > 105% |
-| QR-12 | 🟡 Medium  | Invalid filing type |
+- **ISIN** — 12-character ISO 6166 identifier used to map a shareholding record to a security in the global master file. Without it, the record is unmappable.
+- **13F filing** — quarterly SEC submission by institutional investment managers disclosing equity holdings over $100M
+- **Beneficial owner** — the entity that actually controls or benefits from shares, which may differ from the registered holder
+- **Corporate action** — stock splits, mergers, dividends — events that require ownership percentages to be recalculated across all affected records
 
 ---
+## Screenshots
+<img width="2879" height="1502" alt="Screenshot 2026-03-22 161551" src="https://github.com/user-attachments/assets/1450f5ce-2d46-4c51-a904-435e8a0cbdd7" />
 
-## API Reference
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/audit/run` | Trigger a full QA audit pass |
-| `GET`  | `/audit/summary` | Current defect rate + KPI snapshot |
-| `GET`  | `/audit/patterns` | Systematic error patterns across companies |
-| `GET`  | `/audit/risk-profiles` | Company risk rankings |
-| `POST` | `/audit/ingest` | Load a new data file |
-| `GET`  | `/defects/` | List defects (filterable by severity, status, rule) |
-| `GET`  | `/defects/{company_ticker}` | All defects for a company |
-| `GET`  | `/defects/export/csv` | Download defect log as CSV |
-| `PATCH`| `/defects/{id}/resolve` | Mark defect as resolved |
-| `PATCH`| `/defects/{id}/waive` | Waive defect with justification |
-| `GET`  | `/defects/stats/by-rule` | Defect count per validation rule |
-| `GET`  | `/defects/stats/by-source` | Defect count per data source |
-| `GET`  | `/reports/generate` | Generate Excel audit report |
-| `GET`  | `/reports/download` | Download latest report |
-
-Interactive docs: `http://localhost:8000/docs`
-
----
-
-## Key Metrics (from test run)
-
-| Metric | Value |
-|--------|-------|
-| Records ingested | 963 |
-| Error records injected | 180 (18.0%) |
-| Defects detected by pipeline | 156 |
-| Defect rate | 16.2% |
-| Systematic error patterns identified | 7 |
-| Rules applied | 12 |
-| Test suite | 18/18 passing |
-| Top defect | QR-01 Null ISIN — 32 occurrences across 14 companies |
-
----
-
-## Domain Context
-
-This project simulates the **Public Ownership** data domain used by firms like S&P Global, Refinitiv, and Bloomberg. Key concepts:
-
-- **ISIN (International Securities Identification Number)** — 12-character ISO 6166 identifier for each security
-- **Beneficial owner** — the entity that ultimately controls or benefits from the shares
-- **Shareholding filing** — regulatory submission disclosing ownership stakes (13F, annual report, exchange notification)
-- **Corporate actions** — events (splits, mergers) that require ownership recalculation
-
----
-
-## Resume Bullets (copy-ready)
-
-- Designed and deployed an automated equity data QA pipeline in Python and SQL, reducing mock audit cycle time by **60%** across **1,000+ synthetic shareholding records**
-- Built a defect classification engine with **3 configurable severity tiers**, identifying **7 systematic error patterns** in cross-source shareholding data
-- Exposed QA results via a **RESTful FastAPI service** with 14 endpoints including on-demand audit triggers, defect export, and company risk ranking
-- Created a validation rule library of **12 SQL-based business rules** covering null fields, ISO format violations, and cross-record ownership sum checks
-- Developed a **Streamlit monitoring dashboard** with 6 pages including defect trends, company risk heatmap, and source quality scatter analysis
